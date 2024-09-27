@@ -15,8 +15,17 @@ const port = process.env["PORT"] || 3000;
 const rpcPort = process.env["RPC_PORT"] || 51473;
 const testnetRpcPort = process.env["TESTNET_RPC_PORT"];
 const allowedRpcs = process.env["ALLOWED_RPCS"].split(",");
+const shield = {
+    testnet: [],
+    mainnet: [],
+};
 
 function setupServer(app) {
+  if (testnetRpcPort) {
+      beginShieldSync(true);
+  }
+    
+  beginShieldSync(false);
   const certificatePath = process.env["HTTPS_CERTIFICATE_PATH"];
   const keyPath = process.env["HTTPS_KEY_PATH"];
   if (!certificatePath || !keyPath) {
@@ -119,13 +128,59 @@ async function handleRequest(isTestnet, req, res) {
   }
 }
 
+app.get('/mainnet/getshieldblocks', async function(req, res) {
+    res.send(JSON.stringify(shield["mainnet"]));
+});
+
 app.get("/mainnet/:rpc", async (req, res) => handleRequest(false, req, res));
 if (testnetRpcPort) {
-  app.get("/testnet/:rpc", async (req, res) => handleRequest(true, req, res));
+    app.get('/testnet/getshieldblocks', async function(req, res) {
+	res.send(JSON.stringify(shield["testnet"]));
+    });
+    app.get("/testnet/:rpc", async (req, res) => handleRequest(true, req, res));
 }
+
 
 const server = setupServer(app);
 
 server.listen(port, () => {
   console.log(`Pivx node controller listening on port ${port}`);
 });
+
+async function beginShieldSync(isTestnet) {
+    shield[isTestnet ? "testnet" : "mainnet"] = JSON.parse(fs.readFileSync(isTestnet ? 'shield.testnet.json' : 'shield.json')) || [];
+    const currentShield = shield[isTestnet ? "testnet" : "mainnet"];
+    try {
+	let block = currentShield.length ? currentShield[currentShield.length - 1] + 1 : 0;
+	let { status, response } = await makeRpc(isTestnet, "getblockhash", block);
+	let blockHash = JSON.parse(response);
+	console.log(block);
+	
+	while (true) {
+	    const { status, response } = await makeRpc(isTestnet, "getblock", blockHash, 2);
+	    const { tx, nextblockhash } = JSON.parse(response);
+	    if (status === 200) {
+		const isShield = !!tx.find(b => b.hex.startsWith("03"));
+		if(isShield) {
+		    currentShield.push(block);
+		}
+		blockHash = nextblockhash;
+		block += 1;
+		if (block % 10000 === 0) {
+		    console.error(block);
+		    console.error(currentShield);
+		}
+	    } else {
+		throw new Error(response);
+	    }
+	    if (!nextblockhash) {
+		break;
+	    }
+	}
+    } catch (e) {
+	console.error(e);
+    } finally {
+	fs.writeFileSync(isTestnet ? "shield.testnet.json" : "shield.json", JSON.stringify(currentShield));
+	setTimeout(() => beginShieldSync(isTestnet), 1000 * 60); // Sync every minute
+    }
+};
