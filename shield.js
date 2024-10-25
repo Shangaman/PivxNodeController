@@ -40,7 +40,7 @@ export async function beginShieldSync(isTestnet) {
   let previousBlock = size;
   try {
     let block = currentShield.length
-      ? currentShield[currentShield.length - 1] + 1
+      ? currentShield[currentShield.length - 1].block + 1
       : 2700501;
     let { status, response } = await makeRpc(isTestnet, "getblockhash", block);
     let blockHash = JSON.parse(response);
