@@ -21,17 +21,18 @@ async function recoverShieldbin(isTestnet) {
   const file = await fs.open(shieldBinFile(isTestnet), "r+");
   const buffer = Buffer.alloc(4);
   let blockLength = 0;
-  let isFirstHeader = true;
   while (true) {
     file.read(buffer, 0, 4, lastBlock.i + blockLength);
     const length = buffer.readInt32LE();
     file.read(buffer, 0, 4, lastBlock.i + blockLength + 4);
     const version = buffer.readInt32LE();
-    // This is a tx or it's the first header, so it's part of the block
-    if (version === 3 || isFirstHeader) {
-      isFirstHeader = false;
+    if (version === 3) {
+      // This is a transaction
       blockLength += length;
     } else {
+      // This is a block footer
+      // After this it's the beginning of a new block
+      blockLength += length;
       break;
     }
   }
@@ -128,3 +129,4 @@ export async function getShieldBinary(isTestnet, startingByte = 0) {
 
   return Uint8Array.prototype.slice.call(buffer, startingByte);
 }
+9;
