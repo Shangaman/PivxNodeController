@@ -20,10 +20,23 @@ async function recoverShieldbin(isTestnet) {
   if (!lastBlock) return;
   const file = await fs.open(shieldBinFile(isTestnet), "r+");
   const buffer = Buffer.alloc(4);
-  file.read(buffer, 0, 4, lastBlock.i);
-  const length = buffer.readInt32LE();
+  let blockLength = 0;
+  let isFirstHeader = true;
+  while (true) {
+    file.read(buffer, 0, 4, lastBlock.i + blockLength);
+    const length = buffer.readInt32LE();
+    file.read(buffer, 0, 4, lastBlock.i + blockLength + 4);
+    const version = buffer.readInt32LE();
+    // This is a tx or it's the first header, so it's part of the block
+    if (version === 3 || isFirstHeader) {
+      isFirstHeader = false;
+      blockLength += length;
+    } else {
+      break;
+    }
+  }
   await file.close();
-  await fs.truncate(shieldBinFile(isTestnet), lastBlock.i + length);
+  await fs.truncate(shieldBinFile(isTestnet), lastBlock.i + blockLength);
 }
 
 export async function beginShieldSync(isTestnet) {
