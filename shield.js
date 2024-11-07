@@ -22,19 +22,16 @@ async function recoverShieldbin(isTestnet) {
   const buffer = Buffer.alloc(4);
   let blockLength = 0;
   while (true) {
-    file.read(buffer, 0, 4, lastBlock.i + blockLength);
+    await file.read(buffer, 0, 4, lastBlock.i + blockLength);
     const length = buffer.readInt32LE();
-    file.read(buffer, 0, 4, lastBlock.i + blockLength + 4);
-    const version = buffer.readInt32LE();
-    if (version === 3) {
-      // This is a transaction
+    await file.read(buffer, 0, 4, lastBlock.i + blockLength + 4);
+      const version = buffer.readInt32LE();
       blockLength += length;
-    } else {
-      // This is a block footer
-      // After this it's the beginning of a new block
-      blockLength += length;
-      break;
-    }
+      if (version !== 3) {
+	  // This is a block footer
+	  // After this it's the beginning of a new block
+	  break;
+      }
   }
   await file.close();
   await fs.truncate(shieldBinFile(isTestnet), lastBlock.i + blockLength);
