@@ -23,15 +23,19 @@ async function recoverShieldbin(isTestnet) {
   let blockLength = 0;
   while (true) {
     await file.read(buffer, 0, 4, lastBlock.i + blockLength);
+    blockLength += 4;
     const length = buffer.readInt32LE();
-    await file.read(buffer, 0, 4, lastBlock.i + blockLength + 4);
-      const version = buffer.readInt32LE();
-      blockLength += length;
-      if (version !== 3) {
-	  // This is a block footer
-	  // After this it's the beginning of a new block
-	  break;
-      }
+    await file.read(buffer, 0, 4, lastBlock.i + blockLength);
+    const version = buffer.readUint8();
+    blockLength += length;
+    if (version === 0x5d) {
+      // This is a block footer
+      // After this it's the beginning of a new block
+      break;
+    }
+    if (version !== 3) {
+      console.error("Warning: Invalid tx", version);
+    }
   }
   await file.close();
   await fs.truncate(shieldBinFile(isTestnet), lastBlock.i + blockLength);
@@ -71,8 +75,8 @@ export async function beginShieldSync(isTestnet) {
             isShield = true;
             const length = Buffer.alloc(4);
             length.writeUint32LE(transaction.hex.length / 2);
-            stream.write(length);
-            stream.write(Buffer.from(transaction.hex, "hex"));
+            await stream.write(length);
+            await stream.write(Buffer.from(transaction.hex, "hex"));
             writtenBytes += transaction.hex.length / 2 + 4;
           }
         }
@@ -90,7 +94,7 @@ export async function beginShieldSync(isTestnet) {
           bytes.writeInt32LE(height, 5);
           bytes.writeInt32LE(time, 9);
           writtenBytes += bytes.byteLength;
-          stream.write(bytes);
+          await stream.write(bytes);
           currentShield.push({ block, i: previousBlock });
           previousBlock = size + writtenBytes;
         }
