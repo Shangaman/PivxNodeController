@@ -130,4 +130,3 @@ export async function getShieldBinary(isTestnet, startingByte = 0) {
 
   return Uint8Array.prototype.slice.call(buffer, startingByte);
 }
-9;
