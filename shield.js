@@ -1,11 +1,13 @@
 import fs from "fs/promises";
 import { makeRpc } from "./rpc.js";
+import { RwLock } from "./lock.js";
 
 export const shield = {
   testnet: [],
   mainnet: [],
 };
 
+export const shieldLock = new RwLock();
 const shieldArrayFile = (isTestnet) =>
   isTestnet ? "shield.testnet.json" : "shield.json";
 const shieldBinFile = (isTestnet) =>
@@ -42,6 +44,7 @@ async function recoverShieldbin(isTestnet) {
 }
 
 export async function beginShieldSync(isTestnet) {
+  await shieldLock.write();
   shield[isTestnet ? "testnet" : "mainnet"] =
     JSON.parse(await fs.readFile(shieldArrayFile(isTestnet))) || [];
   const currentShield = shield[isTestnet ? "testnet" : "mainnet"];
@@ -121,12 +124,15 @@ export async function beginShieldSync(isTestnet) {
     await new Promise((res) => {
       stream.close(res);
     });
+    shieldLock.releaseWrite();
     setTimeout(() => beginShieldSync(isTestnet), 1000 * 60); // Sync every minute
   }
 }
 
 export async function getShieldBinary(isTestnet, startingByte = 0) {
+  await shieldLock.read();
   const buffer = await fs.readFile(shieldBinFile(isTestnet));
+  shieldLock.releaseRead();
 
   return Uint8Array.prototype.slice.call(buffer, startingByte);
 }
