@@ -11,7 +11,7 @@ import { shield, beginShieldSync, getShieldBinary } from "./shield.js";
 import { makeRpc } from "./rpc.js";
 
 const app = express();
-app.use(compression());
+app.use(compression({ filter: () => true }));
 app.use(cors());
 const port = process.env["PORT"] || 3000;
 const rpcPort = process.env["RPC_PORT"] || 51473;
@@ -86,7 +86,6 @@ app.get("/mainnet/getshieldblocks", async function (req, res) {
 });
 
 app.get("/mainnet/getshielddata", async (req, res) => {
-  res.set("Content-Encoding", "gzip");
   const startBlock = req.query.startBlock || 0;
   const startingByte = shield["mainnet"]
     // Get the first block that's greater or equal than the requested starting block
@@ -97,8 +96,9 @@ app.get("/mainnet/getshielddata", async (req, res) => {
     res.status(noContent).send(Buffer.from([]));
     return;
   }
-
-  res.send(await getShieldBinary(false, startingByte));
+  const shieldBinary = await getShieldBinary(false, startingByte);
+  res.set("X-Content-Length", shieldBinary.length);
+  res.send(shieldBinary);
 });
 
 app.get("/mainnet/:rpc", async (req, res) => handleRequest(false, req, res));
