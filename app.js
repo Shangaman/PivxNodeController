@@ -3,6 +3,7 @@ dotenv.config();
 checkEnv();
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import http from "http";
 import https from "https";
 import jq from "node-jq";
@@ -10,6 +11,7 @@ import { shield, beginShieldSync, getShieldBinary } from "./shield.js";
 import { makeRpc } from "./rpc.js";
 
 const app = express();
+app.use(compression());
 app.use(cors());
 const port = process.env["PORT"] || 3000;
 const rpcPort = process.env["RPC_PORT"] || 51473;
