@@ -86,6 +86,7 @@ app.get("/mainnet/getshieldblocks", async function (req, res) {
 });
 
 app.get("/mainnet/getshielddata", async (req, res) => {
+  res.set("Content-Encoding", "gzip");
   const startBlock = req.query.startBlock || 0;
   const startingByte = shield["mainnet"]
     // Get the first block that's greater or equal than the requested starting block
