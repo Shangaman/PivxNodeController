@@ -1,11 +1,13 @@
 import fs from "fs/promises";
 import { makeRpc } from "./rpc.js";
+import { RwLock } from "./lock.js";
 
 export const shield = {
   testnet: [],
   mainnet: [],
 };
 
+export const shieldLock = new RwLock();
 const shieldArrayFile = (isTestnet) =>
   isTestnet ? "shield.testnet.json" : "shield.json";
 const shieldBinFile = (isTestnet) =>
@@ -20,13 +22,29 @@ async function recoverShieldbin(isTestnet) {
   if (!lastBlock) return;
   const file = await fs.open(shieldBinFile(isTestnet), "r+");
   const buffer = Buffer.alloc(4);
-  file.read(buffer, 0, 4, lastBlock.i);
-  const length = buffer.readInt32LE();
+  let blockLength = 0;
+  while (true) {
+    await file.read(buffer, 0, 4, lastBlock.i + blockLength);
+    blockLength += 4;
+    const length = buffer.readInt32LE();
+    await file.read(buffer, 0, 4, lastBlock.i + blockLength);
+    const version = buffer.readUint8();
+    blockLength += length;
+    if (version === 0x5d) {
+      // This is a block footer
+      // After this it's the beginning of a new block
+      break;
+    }
+    if (version !== 3) {
+      console.error("Warning: Invalid tx", version);
+    }
+  }
   await file.close();
-  await fs.truncate(shieldBinFile(isTestnet), lastBlock.i + length);
+  await fs.truncate(shieldBinFile(isTestnet), lastBlock.i + blockLength);
 }
 
 export async function beginShieldSync(isTestnet) {
+  await shieldLock.write();
   shield[isTestnet ? "testnet" : "mainnet"] =
     JSON.parse(await fs.readFile(shieldArrayFile(isTestnet))) || [];
   const currentShield = shield[isTestnet ? "testnet" : "mainnet"];
@@ -60,8 +78,8 @@ export async function beginShieldSync(isTestnet) {
             isShield = true;
             const length = Buffer.alloc(4);
             length.writeUint32LE(transaction.hex.length / 2);
-            stream.write(length);
-            stream.write(Buffer.from(transaction.hex, "hex"));
+            await stream.write(length);
+            await stream.write(Buffer.from(transaction.hex, "hex"));
             writtenBytes += transaction.hex.length / 2 + 4;
           }
         }
@@ -79,7 +97,7 @@ export async function beginShieldSync(isTestnet) {
           bytes.writeInt32LE(height, 5);
           bytes.writeInt32LE(time, 9);
           writtenBytes += bytes.byteLength;
-          stream.write(bytes);
+          await stream.write(bytes);
           currentShield.push({ block, i: previousBlock });
           previousBlock = size + writtenBytes;
         }
@@ -106,12 +124,15 @@ export async function beginShieldSync(isTestnet) {
     await new Promise((res) => {
       stream.close(res);
     });
+    shieldLock.releaseWrite();
     setTimeout(() => beginShieldSync(isTestnet), 1000 * 60); // Sync every minute
   }
 }
 
 export async function getShieldBinary(isTestnet, startingByte = 0) {
+  await shieldLock.read();
   const buffer = await fs.readFile(shieldBinFile(isTestnet));
+  shieldLock.releaseRead();
 
   return Uint8Array.prototype.slice.call(buffer, startingByte);
 }
